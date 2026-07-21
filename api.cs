@@ -130,9 +130,16 @@ public class ItemService
             var jsonString = await _httpService._client.GetStringAsync(url);
             var jsonObject = JsonNode.Parse(jsonString);
 
-
             var statisticsClose = jsonObject?["payload"]!["statistics_closed"]!["48hours"]!.AsArray();
             var statisticsLive = jsonObject?["payload"]!["statistics_live"]!["48hours"]!.AsArray();
+
+            if(statisticsClose == null || statisticsLive == null)
+            {
+                return new PriceInfo
+                {
+                    Error ="No statistics"
+                };
+            }
 
             //avg_price за 48h close
             foreach (var item in statisticsClose!)
@@ -140,16 +147,12 @@ public class ItemService
                 avgPrice.Add(item!["avg_price"]!.GetValue<double>());
             }
 
-
-
-
-
-
-
             // BuyPrice_1h,SellPrice_1h
             var reversed = statisticsLive!.Reverse().ToList();
             var itemSell = reversed.FirstOrDefault(x => x!["order_type"]!.GetValue<string>() == "sell");
             var itemBuy = reversed.FirstOrDefault(x => x!["order_type"]!.GetValue<string>() == "buy");
+
+
 
             foreach (var item in statisticsLive!)
             {
@@ -171,14 +174,15 @@ public class ItemService
                 }
 
             }
-            if (priceSell == 0)
+            
+            if (priceSell == 0 && itemSell != null)
             {
-                priceSell = itemSell!["median"]!.GetValue<double>();
+                priceSell = itemSell["median"]!.GetValue<double>();
 
             }
-            if (priceBuy == 0)
+            if (priceBuy == 0 && itemBuy != null)
             {
-                priceBuy = itemBuy!["median"]!.GetValue<double>();
+                priceBuy = itemBuy["median"]!.GetValue<double>();
             }
 
             // volume
@@ -192,6 +196,7 @@ public class ItemService
                 }
 
             }
+
             long volume48h = 0;
             foreach (var a in statisticsClose)
             {
@@ -254,7 +259,7 @@ public class CacheService
             else
             {
 
-                _cacheData.cache.Remove(itemName);
+                _cacheData.cache.TryRemove(itemName,out _);
                 return false;
             }
 
@@ -341,7 +346,7 @@ public class LockService
 
 public class CacheData
 {
-    public readonly Dictionary<string, PriceInfo> cache = new();
+    public readonly ConcurrentDictionary<string, PriceInfo> cache = new();
 }
 public class LockData
 {
