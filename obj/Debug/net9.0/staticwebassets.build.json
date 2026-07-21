@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "xLLtzn77WLAenORWxIkxecAvwg04QuVG4p20bMf0sw4=",
+  "Source": "wf-rc-api",
+  "BasePath": "_content/wf-rc-api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

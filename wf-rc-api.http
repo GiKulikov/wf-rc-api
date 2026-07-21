@@ -1,0 +1,6 @@
+@wf_rc_api_HostAddress = http://localhost:5172
+
+GET {{wf_rc_api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
