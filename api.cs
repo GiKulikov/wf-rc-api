@@ -54,13 +54,26 @@ public class HttpService
     {
         _client = new HttpClient();
         _client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36");
-
-        _client.DefaultRequestHeaders.Add("Accept", "application/json");
-        _client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
-
+        "WarframeRelicBot/1.0 (+https://github.com/GiKulikov/wf-rc-api)");
+        _client.DefaultRequestHeaders.Accept.ParseAdd(
+      "application/json");
         _client.Timeout = TimeSpan.FromSeconds(30);
     }
+    public async Task<string> GetStringAsync(string url)
+    {
+        using var response = await _client.GetAsync(url);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"HTTP {(int)response.StatusCode} ({response.StatusCode}). " +
+                $"URL: {url}. Response: {body}");
+        }
+
+        return body;
+    }
+
 }
 public class ItemService
 {
@@ -131,17 +144,17 @@ public class ItemService
 
 
             var url = _urlApiItem + name + "/statistics";
-            var jsonString = await _httpService._client.GetStringAsync(url);
+            var jsonString = await _httpService.GetStringAsync(url);
             var jsonObject = JsonNode.Parse(jsonString);
 
             var statisticsClose = jsonObject?["payload"]!["statistics_closed"]!["48hours"]!.AsArray();
             var statisticsLive = jsonObject?["payload"]!["statistics_live"]!["48hours"]!.AsArray();
 
-            if(statisticsClose == null || statisticsLive == null)
+            if (statisticsClose == null || statisticsLive == null)
             {
                 return new PriceInfo
                 {
-                    Error ="No statistics"
+                    Error = "No statistics"
                 };
             }
 
@@ -178,7 +191,7 @@ public class ItemService
                 }
 
             }
-            
+
             if (priceSell == 0 && itemSell != null)
             {
                 priceSell = itemSell["median"]!.GetValue<double>();
@@ -263,7 +276,7 @@ public class CacheService
             else
             {
 
-                _cacheData.cache.TryRemove(itemName,out _);
+                _cacheData.cache.TryRemove(itemName, out _);
                 return false;
             }
 
