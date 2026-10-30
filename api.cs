@@ -50,6 +50,11 @@ public class Links
 public class HttpService
 {
     public readonly HttpClient _client;
+
+    private readonly SemaphoreSlim _requestLock = new(1, 1);
+    private DateTime _lastRequestTime = DateTime.MinValue;
+    private readonly TimeSpan _requestInterval =
+        TimeSpan.FromMilliseconds(350);
     public HttpService()
     {
         _client = new HttpClient();
@@ -61,6 +66,24 @@ public class HttpService
     }
     public async Task<string> GetStringAsync(string url)
     {
+        await _requestLock.WaitAsync();
+
+        try
+        {
+            var elapsed = DateTime.UtcNow - _lastRequestTime;
+
+            if (elapsed < _requestInterval)
+            {
+                await Task.Delay(_requestInterval - elapsed);
+            }
+
+            _lastRequestTime = DateTime.UtcNow;
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+
         using var response = await _client.GetAsync(url);
         var body = await response.Content.ReadAsStringAsync();
 
