@@ -54,8 +54,12 @@ public class HttpService
     {
         _client = new HttpClient();
         _client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "WarframeRelicBot/1.0");
-        _client.Timeout = TimeSpan.FromSeconds(120);
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36");
+
+        _client.DefaultRequestHeaders.Add("Accept", "application/json");
+        _client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+
+        _client.Timeout = TimeSpan.FromSeconds(30);
     }
 }
 public class ItemService
