@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Data;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Net;
 
 #region Controller
 
@@ -50,11 +51,13 @@ public class Links
 public class HttpService
 {
     public readonly HttpClient _client;
+    private DateTime _blockedUntil = DateTime.MinValue;
+    private readonly TimeSpan _blockDuration = TimeSpan.FromMinutes(15);
 
     private readonly SemaphoreSlim _requestLock = new(1, 1);
     private DateTime _lastRequestTime = DateTime.MinValue;
     private readonly TimeSpan _requestInterval =
-        TimeSpan.FromMilliseconds(350);
+        TimeSpan.FromMilliseconds(500);
     public HttpService()
     {
         _client = new HttpClient();
@@ -70,6 +73,15 @@ public class HttpService
 
         try
         {
+
+            if (DateTime.UtcNow < _blockedUntil)
+            {
+                throw new HttpRequestException(
+                    "Circuit open: API temporarily blocked",
+                    null,
+                    HttpStatusCode.TooManyRequests);
+            }
+
             var elapsed = DateTime.UtcNow - _lastRequestTime;
 
             if (elapsed < _requestInterval)
@@ -89,9 +101,21 @@ public class HttpService
 
         if (!response.IsSuccessStatusCode)
         {
+            if (response.StatusCode == HttpStatusCode.Forbidden && body.Contains("Just a moment"))
+            {
+                _blockedUntil = DateTime.UtcNow + _blockDuration;            // челлендж Cloudflare: 15 минут
+            }
+            else if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _blockedUntil = DateTime.UtcNow + TimeSpan.FromSeconds(30);  // обычный лимит: короткая пауза
+            }
+
+            var shortBody = body.Length > 200 ? body[..200] : body;
+
             throw new HttpRequestException(
-                $"HTTP {(int)response.StatusCode} ({response.StatusCode}). " +
-                $"URL: {url}. Response: {body}");
+                $"HTTP {(int)response.StatusCode} ({response.StatusCode}). URL: {url}. Response: {shortBody}",
+                null,
+                response.StatusCode);
         }
 
         return body;
@@ -132,15 +156,8 @@ public class ItemService
             {
                 var fresh = await GetItem(key);
                 if (fresh.Error == null)
-                {
                     _cacheService.Set(key, fresh);
-                    result[key] = fresh;
-
-                }
-                else
-                {
-                    result[key] = fresh;
-                }
+                result[key] = fresh;
 
             }
 
@@ -170,16 +187,11 @@ public class ItemService
             var jsonString = await _httpService.GetStringAsync(url);
             var jsonObject = JsonNode.Parse(jsonString);
 
-            var statisticsClose = jsonObject?["payload"]!["statistics_closed"]!["48hours"]!.AsArray();
-            var statisticsLive = jsonObject?["payload"]!["statistics_live"]!["48hours"]!.AsArray();
+            var statisticsClose = jsonObject?["payload"]?["statistics_closed"]?["48hours"]?.AsArray();
+            var statisticsLive = jsonObject?["payload"]?["statistics_live"]?["48hours"]?.AsArray();
 
-            if (statisticsClose == null || statisticsLive == null)
-            {
-                return new PriceInfo
-                {
-                    Error = "No statistics"
-                };
-            }
+            if (statisticsClose == null || statisticsLive == null || statisticsClose.Count == 0)
+                return new PriceInfo { Error = 404 };
 
             //avg_price за 48h close
             foreach (var item in statisticsClose!)
@@ -264,13 +276,24 @@ public class ItemService
                 LastUpdate = DateTime.UtcNow
             };
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
 
             _logger.LogError($"Error occurred while fetching item {name}: {ex.Message}");
             return new PriceInfo
             {
-                Error = "Item not found",
+                Error = ex.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests
+                        ? 429
+                        : (int?)ex.StatusCode ?? 502,
+                LastUpdate = DateTime.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error while fetching {name}: {ex.Message}");
+            return new PriceInfo
+            {
+                Error = 500,
                 LastUpdate = DateTime.UtcNow
             };
         }
@@ -395,7 +418,7 @@ public class LockData
 
 public class PriceInfo
 {
-    public string? Error { get; set; }
+    public int? Error { get; set; }
     public double AveragePrice_48h { get; set; }
     public double MinPrice_48h { get; set; }
     public double MaxPrice_48h { get; set; }
